@@ -1,0 +1,180 @@
+#include "ns3/config-store-module.h"
+#include "ns3/core-module.h"
+#include "ns3/internet-module.h"
+#include "ns3/network-module.h"
+#include "ns3/satellite-module.h"
+#include "ns3/traffic-module.h"
+
+
+using namespace ns3;
+
+NS_LOG_COMPONENT_DEFINE("sat-dama-http-sin-test");
+
+int main(int argc,char *argv[]){
+    // 参数设置
+    uint32_t beamId = 18;
+    uint32_t UtsPerBeam(1);
+    uint32_t EndUserPerUt(1);
+    uint32_t crTxConf(0);
+    // 周期性控制时隙
+    double simLength(300.00);
+
+    Config::SetDefault("ns3::SatEnvVariables::EnableSimulationOutputOverwrite", BooleanValue(true));
+
+    Ptr<SimulationHelper> simulationHelper = CreateObject<SimulationHelper>("sat-dama-http-sin-test");
+
+    // 文件路径
+    std::string inputFileNameWithPath = Singleton<SatEnvVariables>::Get()->LocateDirectory("contrib/satellite/examples") + "/tn9-dama-input-attributes.xml";
+
+    // 场景设置
+    // 波束数为1,id=18
+    /**
+     * 帧配置
+     * 4个帧（总带宽13.75Mhz）
+     * 8*0.3125 ->2.5MHz
+     * 8*0.625  ->5MHz
+     * 4*1.25   ->5MHz
+     * 1*1.25   ->1.25MHz
+     * 
+     * NCC配置
+     * 采用动态时隙分配
+     * 禁用频率复用协调算法
+     * 
+     * 通信资源传输模式
+     * RBDC + periodical control slots：使用基于时隙的需求分配（RBDC）和周期性控制时隙。
+     * RBDC + slotted ALOHA：使用基于时隙的需求分配和时隙 ALOHA（随机访问协议）。
+     * RBDC + CDRSA (loose RC 0)：使用基于时隙的需求分配和 CD-RSA（带有松散反馈的资源请求）。
+     * 
+     * 返回链路配置
+     * Constant interference：返回链路上的干扰是常数，假设干扰是稳定的。
+     * AVI error model：使用 AVI（应用层协议错误模型）来模拟错误。
+     * ARQ disabled：自动重传请求（ARQ）在返回链路上被禁用。
+     * 
+     * 转发链路配置
+     * ACM disabled：自适应调制和编码（ACM）在转发链路上被禁用。
+     * Constant interference：转发链路上的干扰是常数。
+     * No error model：没有使用错误模型来模拟转发链路的错误。
+     * ARQ disabled：转发链路上也禁用了自动重传请求（ARQ）。
+     * 
+     * 
+     *  **/
+
+    CommandLine cmd;
+    cmd.AddValue("simLength", "Simulation duration in seconds", simLength);
+    cmd.AddValue("utsPerBeam", "Number of UTs per spot-beam", UtsPerBeam);
+    cmd.AddValue("crTxConf", "CR transmission configuration", crTxConf);
+    simulationHelper->AddDefaultUiArguments(cmd);
+    cmd.Parse(argc,argv);
+
+    // 
+    Config::SetDefault("ns3::ConfigStore::Filename",StringValue(inputFileNameWithPath));
+    Config::SetDefault("ns3::ConfigStore::Model",StringValue("Load"));
+    Config::SetDefault("ns3::ConfigStore::FileFormat",StringValue("Xml"));
+    ConfigStore configstore;
+    configstore.ConfigureDefaults();
+
+    // 配置仿真信息
+    simulationHelper->SetSimulationTime(simLength);
+    simulationHelper->SetUserCountPerUt(EndUserPerUt);
+    simulationHelper->SetUtCountPerBeam(UtsPerBeam);
+
+    std::stringstream beam;
+    beam << beamId;
+    simulationHelper->SetBeams(beam.str());
+    
+    // NCC配置
+    Config::SetDefault("ns3::SatSuperframeConf0::FrameConfigType",StringValue("ConfigType_2"));
+    Config::SetDefault("ns3::SatWaveformConf::AcmEnabled",BooleanValue(true));
+
+    // RBDC配置(是否为下层服务提供了恒定的资源分配;是否允许使用 RBDC（资源块动态配置）方式;定义下层服务中允许的最小服务速率;是否允许按流量进行服务分配)
+    Config::SetDefault("ns3::SatLowerLayerServiceConf::DaService3_ConstantAssignmentProvided",BooleanValue(false));
+    Config::SetDefault("ns3::SatLowerLayerServiceConf::DaService3_RbdcAllowed",BooleanValue(true));
+    Config::SetDefault("ns3::SatLowerLayerServiceConf::DaService3_MinimumServiceRate",UintegerValue(16));
+    Config::SetDefault("ns3::SatLowerLayerServiceConf::DaService3_VolumAllowed",BooleanValue(false));
+
+    switch (crTxConf)
+    {
+        // 随机接入模式（Random Access Model）和 控制时隙配置
+    case 0 :{
+        Config::SetDefault("ns3::SatBeamHelper::RandomAccessModel",EnumValue(SatEnums::RA_MODEL_OFF));
+        Config::SetDefault("ns3::SatBeamScheduler::ControlSlotsEnabled",BooleanValue(true));
+        break;
+    }
+    case 1 :{
+        Config::SetDefault("ns3::SatBeamHelper::RandomAccessModel",EnumValue(SatEnums::RA_MODEL_SLOTTED_ALOHA));
+        Config::SetDefault("ns3::SatBeamScheduler::ControlSlotsEnabled",BooleanValue(false));
+        break;
+    }
+        
+    case 2 :{
+        Config::SetDefault("ns3::SatBeamHelper::RandomAccessModel",EnumValue(SatEnums::RA_MODEL_CRDSA));
+        Config::SetDefault("ns3::SatBeamScheduler::ControlSlotsEnabled",BooleanValue(false));
+        Config::SetDefault("ns3::SatUtHelper::UseCrdsaOnlyForControlPackets", BooleanValue(false));
+        break;
+    }
+    default:{
+        NS_FATAL_ERROR("Unsupported crTxConf: " << crTxConf);
+        break;
+    }
+}
+
+    simulationHelper->CreateSatScenario();
+
+    simulationHelper->InstallTrafficModel(
+        SimulationHelper::HTTP,
+        SimulationHelper::TCP,
+        SimulationHelper::FWD_LINK,
+        MilliSeconds(3)
+    );
+
+    Ptr<SatStatsHelperContainer> s = simulationHelper->GetStatisticsContainer();
+
+    s->AddPerBeamRtnAppThroughput(SatStatsHelper::OUTPUT_SCATTER_PLOT);
+    s->AddPerBeamRtnAppThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamRtnFeederDevThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamRtnFeederMacThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamRtnFeederPhyThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+
+    s->AddPerBeamRtnAppDelay(SatStatsHelper::OUTPUT_CDF_FILE);
+    s->AddPerBeamRtnAppDelay(SatStatsHelper::OUTPUT_CDF_PLOT);
+    s->AddPerBeamRtnDevDelay(SatStatsHelper::OUTPUT_CDF_FILE);
+    s->AddPerBeamRtnDevDelay(SatStatsHelper::OUTPUT_CDF_PLOT);
+    s->AddPerBeamRtnPhyDelay(SatStatsHelper::OUTPUT_CDF_FILE);
+    s->AddPerBeamRtnPhyDelay(SatStatsHelper::OUTPUT_CDF_PLOT);
+
+    s->AddPerBeamFwdAppThroughput(SatStatsHelper::OUTPUT_SCATTER_PLOT);
+    s->AddPerBeamFwdAppThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamFwdUserDevThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamFwdUserMacThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamFwdUserPhyThroughput(SatStatsHelper::OUTPUT_SCALAR_FILE);
+
+    s->AddPerBeamFwdAppDelay(SatStatsHelper::OUTPUT_CDF_FILE);
+    s->AddPerBeamFwdAppDelay(SatStatsHelper::OUTPUT_CDF_PLOT);
+    s->AddPerBeamFwdDevDelay(SatStatsHelper::OUTPUT_CDF_FILE);
+    s->AddPerBeamFwdDevDelay(SatStatsHelper::OUTPUT_CDF_PLOT);
+    s->AddPerBeamFwdPhyDelay(SatStatsHelper::OUTPUT_CDF_FILE);
+    s->AddPerBeamFwdPhyDelay(SatStatsHelper::OUTPUT_CDF_PLOT);
+
+    s->AddPerBeamRtnFeederDaPacketError(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamFrameSymbolLoad(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamWaveformUsage(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamCapacityRequest(SatStatsHelper::OUTPUT_SCATTER_FILE);
+    s->AddPerBeamResourcesGranted(SatStatsHelper::OUTPUT_SCATTER_PLOT);
+
+    s->AddPerBeamFeederCrdsaPacketCollision(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamFeederCrdsaPacketError(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamFeederSlottedAlohaPacketCollision(SatStatsHelper::OUTPUT_SCALAR_FILE);
+    s->AddPerBeamFeederSlottedAlohaPacketError(SatStatsHelper::OUTPUT_SCALAR_FILE);
+
+    NS_LOG_INFO("--- sat-dama-http-sim-tn9 ---");
+    NS_LOG_INFO("  Simulation length: " << simLength);
+    NS_LOG_INFO("  Number of UTs: " << UtsPerBeam);
+    NS_LOG_INFO("  Number of end users per UT: " << EndUserPerUt);
+    NS_LOG_INFO("  ");
+
+    simulationHelper->RunSimulation();
+
+    return 0;
+}
+
+
