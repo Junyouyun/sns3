@@ -1,0 +1,83 @@
+卫星通信系统中的随机接入策略（ESSA策略）
+ESSA 是一种增强型卫星随机接入策略，它主要用于解决传统随机接入在高负载时的冲突问题，并优化系统的接入性能。
+随机接入机制
+随机接入机制涉及多个用户通过不同方式争用相同资源的情况。传统机制可能会在用户数量增多的情况下发生碰撞，ESSA策略引入更加高效的资源分配机制，可以根据负载和网络情况调整接入参数，减小冲突，提高系统效率。
+随机接入退避机制
+让发生冲突的用户延迟再发送请求，从而避免碰撞。ESSA策略中设置了退避时间（RaService0_BackOffTimeInMilliSeconds）和退避概率（RaService0_BackOffProbability），帮助用户在发生冲突后重新选择合适的发送时机。
+负载与容量管理
+ESSA 策略通常包括对 负载 和 容量 的动态管理。系统根据当前负载调整接入策略。
+通过 RaService0_AverageNormalizedOfferedLoadThreshold 来设置负载阈值，控制系统在达到一定负载时采取的策略。
+RaService0_MaximumUniquePayloadPerBlock 等设置帮助管理每个接入块的最大负载。
+
+CRDSA
+CRDSA 是一种多址接入技术，它通过在物理层面划分载波资源来实现不同用户之间的隔离和资源分配，从而提高系统的吞吐量和容量。
+CRDSA 是一种 多址接入机制，它通过划分不同的载波（或频率资源）来为不同用户分配独立的通信资源。这样，不同用户在同一时间能够使用不同的载波进行通信，从而避免了时隙级别的竞争和冲突。
+在 CRDSA 中，载波资源的划分可以使多个用户在不同的载波上进行并行传输，从而有效提高系统的 频谱效率 和 容量。这种资源划分可以帮助减少干扰、提高数据传输速率，尤其是在高负载情况下。
+DaServiceCount 和 DaServiceX_ConstantAssignmentProvided 等配置项表明系统为不同的服务类型（如 DaService0、DaService1、DaService2 等）提供了独立的资源分配策略。这些服务类型可以分别进行不同的配置，以支持 不同的接入方式、服务质量要求 或 业务模型。
+
+干扰消除模型（Interference Elimination Model）指的是一种用于 模拟、分析和处理信号干扰的框架，它帮助通信系统在接收信号时减少或消除由多种干扰源引起的信号衰减。干扰消除模型的目的是提高通信系统的 接收质量，使得接收到的信号能够在存在干扰的环境中被正确解码。
+
+随机接入机制：
+1. 干扰消除模型 (RaInterferenceEliminationModel)
+Config::SetDefault("ns3::SatBeamHelper::RaInterferenceEliminationModel", EnumValue(SatPhyRxCarrierConf::SIC_RESIDUAL));
+- 作用：在随机接入过程中，用户设备可能会发生信号干扰，干扰消除模型用于模拟如何减少干扰对接收信号的影响。通过启用 SIC（Successive Interference Cancellation） 模型，接收端可以通过逐步解码信号并消除干扰，从而提高接入过程中的成功率。
+- 在随机接入中的作用：在高用户密度的情况下，多个设备可能会同时尝试接入，造成信号碰撞。通过配置干扰消除模型，可以让接收端在发生干扰时尝试恢复正确的信号，减少随机接入过程中信号丢失的风险。
+2. 碰撞检测模型 (RaCollisionModel)
+Config::SetDefault("ns3::SatBeamHelper::RaCollisionModel", EnumValue(SatPhyRxCarrierConf::RA_COLLISION_CHECK_AGAINST_SINR));
+- 作用：在随机接入过程中，不同的用户可能会在同一时隙或频率上传输数据，造成 碰撞。碰撞检测模型根据接收到的 SINR 来判断是否发生碰撞。
+- 在随机接入中的作用：当多个设备同时在相同的时间和频率上传输数据时，碰撞检测模型帮助识别是否发生了碰撞。若碰撞发生，接入请求可能会失败。碰撞检测对优化随机接入过程至关重要，可以有效避免无效传输和接入延迟。
+3. 返回链路 (ReturnLinkLinkResults)
+Config::SetDefault("ns3::SatBeamHelper::ReturnLinkLinkResults", EnumValue(SatEnums::LR_FSIM));
+- 作用：设置如何处理返回链路的结果。返回链路通常用于卫星通信系统中，指的是从地面用户设备回传的数据链路。通过配置返回链路，可以评估从终端设备到卫星的链路质量。
+- 在随机接入中的作用：配置返回链路模型有助于评估接入请求的成功率和信号质量。在随机接入的仿真过程中，返回链路用于验证设备是否成功接入网络，以及如何影响后续的通信质量。
+4. 波形配置 (Waveform Configuration)
+Config::SetDefault("ns3::SatWaveformConf::DefaultWaveformId", UintegerValue(2));
+Config::SetDefault("ns3::SatHelper::WaveformConfFileName", StringValue("fSimWaveforms.txt"));
+- 作用：设置仿真中使用的通信波形和其参数。波形决定了信号的调制方式（如QPSK、BPSK等）和带宽等特性。
+- 在随机接入中的作用：在仿真随机接入策略时，波形的选择会影响接入请求的传输速率、功率和干扰。在不同的波形配置下，接入策略的性能可能会有所不同，特别是在带宽受限和干扰较大的环境下。
+
+随机接入策略参数
+1. 最大独立负载（MaximumUniquePayloadPerBlock）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_MaximumUniquePayloadPerBlock", UintegerValue(3));
+- 作用：设置每个 随机接入块（RA Block） 可以支持的最大独立负载数量。
+- 含义：在随机接入过程中，每个接入请求被划分为多个数据块，这个参数指定每个数据块最多可以承载的负载数目。例如，值为 3 表示每个接入块最多可以支持 3 个独立的数据请求。
+2. 最大连续接入块数（MaximumConsecutiveBlockAccessed）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_MaximumConsecutiveBlockAccessed", UintegerValue(6));
+- 作用：设置一个用户可以连续访问的最大接入块数目。
+- 含义：这个参数控制用户在每次接入过程中可以尝试连续发送多少个接入块。如果设置为 6，则用户最多可以尝试 6 次连续接入。
+3. 最小空闲接入块数（MinimumIdleBlock）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_MinimumIdleBlock", UintegerValue(2));
+- 作用：设置随机接入过程中要求的最小空闲接入块数目。
+- 含义：该配置限制了每个接入请求之间必须有最小数量的空闲接入块，以便其他用户可以接入。比如，设置为 2 表示每个接入请求之后必须有至少两个接入块的空闲时间。
+4. 退避时间（BackOffTimeInMilliSeconds）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_BackOffTimeInMilliSeconds", UintegerValue(50));
+- 作用：设置在接入请求发生碰撞或失败时的退避时间（以毫秒为单位）。
+- 含义：如果发生了碰撞，设备将等待一段时间再尝试重新接入。退避时间通常是随机的，可以避免多个设备在同一时刻重新尝试接入，减少碰撞概率。
+5. 退避概率（BackOffProbability）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_BackOffProbability", UintegerValue(1));
+- 作用：设置退避的概率。
+- 含义：该参数控制退避过程中的概率值。例如，1表示每次碰撞后设备都将采用退避策略。
+6. 高负载下的退避概率（HighLoadBackOffProbability）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_HighLoadBackOffProbability", UintegerValue(1));
+- 作用：设置在高负载情况下，设备采用退避策略的概率。
+- 含义：在网络负载较高时，退避的概率可以提高，避免过度拥堵。
+7. 平均负载阈值（AverageNormalizedOfferedLoadThreshold）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_AverageNormalizedOfferedLoadThreshold", DoubleValue(0.99));
+- 作用：设置一个平均负载的阈值，超过该阈值时，网络会进入更严格的控制状态，降低接入请求。
+- 含义：当接入负载超过 0.99 时，接入请求可能会受到限制，避免网络过载。
+8. 随机接入实例数（NumberOfInstances）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_NumberOfInstances", UintegerValue(3));
+- 作用：设置服务实例的数量。
+- 含义：随机接入服务可以有多个实例，每个实例负责处理不同的用户或接入请求。这个参数指定有多少个服务实例可以并行处理。
+9. 是否允许时隙ALOHA（SlottedAlohaAllowed）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_SlottedAlohaAllowed", BooleanValue(false));
+- 作用：设置是否允许使用时隙ALOHA。
+- 含义：时隙ALOHA是一种基本的随机接入机制，设备在特定时间窗口内发送数据，避免同时发送导致碰撞。如果设置为 false，则禁用时隙ALOHA。
+10. 是否允许CRDSA（Cognitive Randomized Dynamic Spectrum Access）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_CrdsaAllowed", BooleanValue(false));
+- 作用：设置是否允许使用CRDSA。
+- 含义：CRDSA是一种认知无线电技术，通过动态分配频谱来减少干扰，提高接入效率。如果设置为 false，则禁用CRDSA。
+11. 是否允许ESSA（Enhanced Shared Spectrum Access）
+Config::SetDefault("ns3::SatLowerLayerServiceConf::RaService0_EssaAllowed", BooleanValue(true));
+- 作用：设置是否允许使用ESSA（增强共享频谱接入）。
+- 含义：ESSA是一个增强的共享频谱接入机制，可以提高资源利用效率。如果设置为 true，则允许使用ESSA策略。
